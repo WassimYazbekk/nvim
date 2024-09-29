@@ -34,7 +34,6 @@ treesitter.setup({
 		"vim",
 		"dockerfile",
 		"gitignore",
-		"java",
 		"php",
 	},
 	-- auto install above language parsers
