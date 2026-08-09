@@ -1,9 +1,3 @@
--- Import lspconfig plugin safely
-local lspconfig_status, lspconfig = pcall(require, "lspconfig")
-if not lspconfig_status then
-	return
-end
-
 -- Import cmp-nvim-lsp plugin safely
 local cmp_nvim_lsp_status, cmp_nvim_lsp = pcall(require, "cmp_nvim_lsp")
 if not cmp_nvim_lsp_status then
@@ -41,6 +35,17 @@ local on_attach = function(client, bufnr)
 	keymap.set("n", "<leader>gr", "<cmd>lua vim.lsp.buf.references()<CR>", opts) -- Find references
 end
 
+-- Use Neovim 0.11+ LspAttach event to cleanly handle keybind hooks
+vim.api.nvim_create_autocmd("LspAttach", {
+	group = vim.api.nvim_create_augroup("UserLspConfig", {}),
+	callback = function(ev)
+		local client = vim.lsp.get_client_by_id(ev.data.client_id)
+		if client then
+			on_attach(client, ev.buf)
+		end
+	end,
+})
+
 -- Enable autocompletion capabilities
 local capabilities = cmp_nvim_lsp.default_capabilities()
 
@@ -51,56 +56,61 @@ for type, icon in pairs(signs) do
 	vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = "" })
 end
 
--- Configure LSP servers
+-- Configure LSP global defaults across all servers
+vim.lsp.config("*", {
+	capabilities = capabilities,
+})
+
+-- Individual server extra overrides using Neovim 0.11 native configurations
+vim.lsp.config("emmet_ls", {
+	filetypes = { "html", "typescriptreact", "javascriptreact", "css", "sass", "scss", "less" },
+})
+
+vim.lsp.config("gopls", {
+	cmd = { "gopls" },
+	filetypes = { "go", "gomod", "gowork", "gotmpl" },
+	-- Replaced old root_pattern with native vim.fs.root
+	root_markers = { "go.work", "go.mod", ".git" }, 
+	settings = {
+		gopls = {
+			completeUnimported = true,
+			usePlaceholders = true,
+			analyses = {
+				unusedparams = true,
+			},
+		},
+	},
+})
+
+vim.lsp.config("lua_ls", {
+	settings = {
+		Lua = {
+			diagnostics = {
+				globals = { "vim" },
+			},
+			workspace = {
+				library = {
+					[vim.fn.expand("$VIMRUNTIME/lua")] = true,
+					[vim.fn.stdpath("config") .. "/lua"] = true,
+				},
+			},
+		},
+	},
+})
+
+-- List of all servers you want enabled and active
 local servers = {
-	html = {},
-	cssls = {},
-	phpactor = {},
-	tailwindcss = {},
-	emmet_ls = {
-		filetypes = { "html", "typescriptreact", "javascriptreact", "css", "sass", "scss", "less" },
-	},
-	gopls = {
-		cmd = { "gopls" },
-		filetypes = { "go", "gomod", "gowork", "gotmpl" },
-		root_dir = lspconfig.util.root_pattern("go.work", "go.mod", ".git"),
-		settings = {
-			gopls = {
-				completeUnimported = true,
-				usePlaceholders = true,
-				analyses = {
-					unusedparams = true,
-				},
-			},
-		},
-	},
-	lua_ls = {
-		settings = {
-			Lua = {
-				diagnostics = {
-					globals = { "vim" },
-				},
-				workspace = {
-					library = {
-						[vim.fn.expand("$VIMRUNTIME/lua")] = true,
-						[vim.fn.stdpath("config") .. "/lua"] = true,
-					},
-				},
-			},
-		},
-	},
+	"html",
+	"cssls",
+	"phpactor",
+	"tailwindcss",
+	"emmet_ls",
+	"gopls",
+	"lua_ls",
+	"ts_ls",
 }
 
--- Set up each server
-for server, config in pairs(servers) do
-	lspconfig[server].setup(vim.tbl_deep_extend("force", {
-		capabilities = capabilities,
-		on_attach = on_attach,
-	}, config or {}))
+-- Enable each configuration globally
+for _, server in ipairs(servers) do
+	vim.lsp.enable(server)
 end
-
--- Configure TypeScript using ts_ls
-lspconfig.ts_ls.setup({
-	capabilities = capabilities,
-	on_attach = on_attach,
-})
